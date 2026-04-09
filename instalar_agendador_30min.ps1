@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 $taskName = "LST_Capacidade_Diaria_30min"
 $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$launcherPath = Join-Path $baseDir "run_lst_capacidade_diaria.ps1"
+$launcherPath = Join-Path $baseDir "run_lst_capacidade_diaria_hidden.vbs"
 
 if (-not (Test-Path -LiteralPath $launcherPath)) {
     throw "Launcher nao encontrado: $launcherPath"
@@ -24,8 +24,8 @@ if ($nextRun -le $now) {
 }
 
 $action = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$launcherPath`""
+    -Execute "wscript.exe" `
+    -Argument "`"$launcherPath`""
 
 $trigger = New-ScheduledTaskTrigger `
     -Once `
