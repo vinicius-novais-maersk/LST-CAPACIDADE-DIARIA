@@ -11,7 +11,20 @@ function Write-Log {
     param([string]$Message)
 
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    Add-Content -LiteralPath $logFile -Value "[$timestamp] $Message"
+    "[$timestamp] $Message" | Out-File -LiteralPath $logFile -Append -Encoding utf8
+}
+
+function Write-ProcessOutput {
+    param([object]$Line)
+
+    if ($null -eq $Line) {
+        return
+    }
+
+    $text = $Line.ToString().TrimEnd("`r", "`n")
+    if ($text.Length -gt 0) {
+        $text | Out-File -LiteralPath $logFile -Append -Encoding utf8
+    }
 }
 
 if (-not (Test-Path -LiteralPath $scriptPath)) {
@@ -20,9 +33,9 @@ if (-not (Test-Path -LiteralPath $scriptPath)) {
 
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 
-$pythonCommand = Get-Command py -ErrorAction SilentlyContinue
+$pythonCommand = Get-Command python -ErrorAction SilentlyContinue
 if (-not $pythonCommand) {
-    $pythonCommand = Get-Command python -ErrorAction SilentlyContinue
+    $pythonCommand = Get-Command py -ErrorAction SilentlyContinue
 }
 
 if (-not $pythonCommand) {
@@ -44,7 +57,9 @@ try {
     Write-Log "Execucao iniciada."
     Push-Location $baseDir
     try {
-        & $pythonExe $scriptPath *>> $logFile
+        & $pythonExe -X utf8 -u $scriptPath 2>&1 | ForEach-Object {
+            Write-ProcessOutput -Line $_
+        }
         $exitCode = $LASTEXITCODE
     }
     finally {
