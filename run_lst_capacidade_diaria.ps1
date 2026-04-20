@@ -15,15 +15,27 @@ function Write-Log {
 }
 
 function Write-ProcessOutput {
-    param([object]$Line)
+    param([string]$Text)
 
-    if ($null -eq $Line) {
+    if ([string]::IsNullOrEmpty($Text)) {
         return
     }
 
-    $text = $Line.ToString().TrimEnd("`r", "`n")
-    if ($text.Length -gt 0) {
-        $text | Out-File -LiteralPath $logFile -Append -Encoding utf8
+    $reader = [System.IO.StringReader]::new($Text)
+    try {
+        while ($true) {
+            $line = $reader.ReadLine()
+            if ($null -eq $line) {
+                break
+            }
+
+            if ($line.Length -gt 0) {
+                $line | Out-File -LiteralPath $logFile -Append -Encoding utf8
+            }
+        }
+    }
+    finally {
+        $reader.Dispose()
     }
 }
 
@@ -55,16 +67,37 @@ try {
     }
 
     Write-Log "Execucao iniciada."
-    Push-Location $baseDir
+    $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+    $startInfo.FileName = $pythonExe
+    $startInfo.Arguments = "-X utf8 -u `"$scriptPath`""
+    $startInfo.WorkingDirectory = $baseDir
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    $startInfo.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8"
+
+    if ($startInfo.PSObject.Properties.Name -contains "StandardOutputEncoding") {
+        $startInfo.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $startInfo.StandardErrorEncoding = [System.Text.Encoding]::UTF8
+    }
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $startInfo
+
     try {
-        & $pythonExe -X utf8 -u $scriptPath 2>&1 | ForEach-Object {
-            Write-ProcessOutput -Line $_
-        }
-        $exitCode = $LASTEXITCODE
+        [void]$process.Start()
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
     }
     finally {
-        Pop-Location
+        $process.Dispose()
     }
+
+    Write-ProcessOutput -Text $stdout
+    Write-ProcessOutput -Text $stderr
 
     if ($exitCode -ne 0) {
         throw "Python retornou codigo $exitCode."
