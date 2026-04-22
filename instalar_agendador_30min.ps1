@@ -4,9 +4,14 @@ $ErrorActionPreference = "Stop"
 $taskName = "LST_Capacidade_Diaria_30min"
 $baseDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $runnerPath = Join-Path $baseDir "run_lst_capacidade_diaria.ps1"
+$hiddenRunnerPath = Join-Path $baseDir "run_lst_capacidade_diaria_hidden.vbs"
 
 if (-not (Test-Path -LiteralPath $runnerPath)) {
     throw "Runner nao encontrado: $runnerPath"
+}
+
+if (-not (Test-Path -LiteralPath $hiddenRunnerPath)) {
+    throw "Wrapper oculto nao encontrado: $hiddenRunnerPath"
 }
 
 $now = Get-Date
@@ -24,8 +29,8 @@ if ($nextRun -le $now) {
 }
 
 $action = New-ScheduledTaskAction `
-    -Execute "powershell.exe" `
-    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$runnerPath`""
+    -Execute "wscript.exe" `
+    -Argument "`"$hiddenRunnerPath`""
 
 $trigger = New-ScheduledTaskTrigger `
     -Once `
