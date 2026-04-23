@@ -6,6 +6,7 @@ $scriptPath = Join-Path $baseDir "LST_Capacidade_Diaria_extrator_ecargo_infos.py
 $logDir = Join-Path $baseDir "logs"
 $logFile = Join-Path $logDir ("lst_capacidade_diaria_" + (Get-Date -Format "yyyy-MM-dd") + ".log")
 $mutexName = "Global\LST_Capacidade_Diaria_Ecargo"
+$executionTimeout = New-TimeSpan -Minutes 25
 
 function Write-Log {
     param([string]$Message)
@@ -37,6 +38,21 @@ function Write-ProcessOutput {
     finally {
         $reader.Dispose()
     }
+}
+
+function Stop-ProcessTree {
+    param([int]$ProcessId)
+
+    $childProcessIds = @(
+        Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty ProcessId
+    )
+
+    foreach ($childProcessId in $childProcessIds) {
+        Stop-ProcessTree -ProcessId $childProcessId
+    }
+
+    Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
 }
 
 if (-not (Test-Path -LiteralPath $scriptPath)) {
@@ -87,10 +103,26 @@ try {
 
     try {
         [void]$process.Start()
-        $stdout = $process.StandardOutput.ReadToEnd()
-        $stderr = $process.StandardError.ReadToEnd()
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $timedOut = -not $process.WaitForExit([int]$executionTimeout.TotalMilliseconds)
+
+        if ($timedOut) {
+            Write-Log(
+                "Falha: Python excedeu o limite de $([int]$executionTimeout.TotalMinutes) minutos. " +
+                "Encerrando a arvore de processos."
+            )
+            Stop-ProcessTree -ProcessId $process.Id
+        }
+
         $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
         $exitCode = $process.ExitCode
+
+        if ($timedOut) {
+            throw "Python excedeu o limite de $([int]$executionTimeout.TotalMinutes) minutos."
+        }
     }
     finally {
         $process.Dispose()
